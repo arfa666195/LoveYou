@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Love Song Heart</title>
+<style>
+  :root{
+    --bg1:#060814; --bg2:#000000;
+    --pink:#ff2f6b; --pink-2:#ff4f8b;
+    --panel:#2a0d1f; --panel-2:#3a0f29;
+    --text:#ffffffcc;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0; overflow:hidden; color:#fff;
+    font-family:system-ui, -apple-system, Segoe UI, Roboto, Arial, "Noto Sans", sans-serif;
+    background: radial-gradient(circle at 50% 45%, var(--bg1), var(--bg2) 70%);
+  }
+
+  /* ===== Star field ===== */
+  #stars{position:fixed; inset:0; z-index:0}
+
+  /* ===== Audio frame ===== */
+  .player{
+    position:fixed; top:32px; left:50%; transform:translateX(-50%);
+    display:flex; align-items:center; gap:14px;
+    padding:10px 14px; width:min(90vw,520px);
+    background:linear-gradient(180deg, var(--panel-2), var(--panel));
+    border-radius:16px; box-shadow:0 8px 28px #0009, inset 0 0 0 1px #ffffff12;
+    z-index:3;
+  }
+  .btn{
+    width:36px; height:36px; border-radius:50%; border:none; cursor:pointer;
+    background: radial-gradient(circle at 30% 30%, #ff6b92, var(--pink));
+    color:#fff; font-weight:700; display:grid; place-items:center;
+    box-shadow:0 4px 12px #ff2f6b65;
+  }
+  .title{font-weight:600; font-size:14px; opacity:.95}
+  .time{font-size:12px; opacity:.75; white-space:nowrap}
+  .bar{
+    position:relative; flex:1; height:8px; border-radius:999px; cursor:pointer;
+    background:#ffffff14; overflow:hidden;
+  }
+  .bar > i{
+    position:absolute; inset:0; width:0%; background:linear-gradient(90deg,var(--pink),var(--pink-2));
+  }
+
+  /* ===== Heart ===== */
+  .heart-wrap{
+    position:fixed; inset:0; display:grid; place-items:center; z-index:2;
+  }
+  .heart{
+    width:160px; height:160px; position:relative; transform:rotate(-45deg);
+    background: var(--pink);
+    box-shadow: 0 0 40px 12px var(--pink-2), 0 0 140px 30px #ff2f6b33;
+    cursor:pointer; animation:pulse 1.8s infinite;
+  }
+  .heart::before, .heart::after{
+    content:""; position:absolute; width:160px; height:160px; background:var(--pink); border-radius:50%;
+  }
+  .heart::before{top:-80px; left:0}
+  .heart::after{left:80px; top:0}
+  @keyframes pulse{
+    0%,100%{ transform:scale(1) rotate(-45deg)}
+    50%{ transform:scale(1.1) rotate(-45deg)}
+  }
+  .heart.clicked{ filter:brightness(1.1); box-shadow:0 0 70px 18px var(--pink-2), 0 0 200px 60px #ff2f6b44 }
+
+  /* ===== Bubbles ===== */
+  .bubble{
+    position:fixed; left:0; top:0; transform:translate(0,0);
+    padding:12px 18px; min-width:220px;
+    background:linear-gradient(180deg, #4b1238, #301227);
+    color:var(--text);
+    border-radius:18px; backdrop-filter: blur(4px);
+    box-shadow:0 12px 30px #000a, inset 0 0 0 1px #ffffff22, 0 0 22px 8px #ff2f6b25;
+    pointer-events:none; user-select:none;
+    font-weight:600; letter-spacing:.2px; text-shadow:0 1px 12px #fff3;
+    z-index:4; will-change: transform, opacity;
+  }
+  .hidden{opacity:0}
+
+  /* ===== Input helper ===== */
+  .name-input{
+    position:fixed; bottom:24px; left:50%; transform:translateX(-50%);
+    display:flex; gap:8px; z-index:3;
+    background:#00000040; padding:8px; border-radius:14px; backdrop-filter: blur(6px);
+    box-shadow: 0 8px 20px #0006, inset 0 0 0 1px #ffffff1a;
+  }
+  .name-input input{
+    width:min(70vw,320px); padding:10px 12px; border-radius:10px; border:1px solid #ffffff2a;
+    background:#0b0e1a; color:#fff; outline:none;
+  }
+  .name-input button{
+    padding:10px 14px; border-radius:10px; border:none; background:#1f2436; color:#fff; cursor:pointer;
+  }
+</style>
+</head>
+<body>
+
+<canvas id="stars"></canvas>
+
+<!-- Audio frame -->
+<div class="player" id="player">
+  <button class="btn" id="toggle">►</button>
+  <div class="title">I dedicate this song to you 💖</div>
+  <div class="bar" id="bar"><i id="fill"></i></div>
+  <div class="time"><span id="cur">0:00</span> / <span id="dur">0:00</span></div>
+</div>
+
+<!-- Heart -->
+<div class="heart-wrap">
+  <div class="heart" id="heart" title="Click me"></div>
+</div>
+
+<!-- Input nama -->
+<div class="name-input">
+  <input id="nameField" placeholder="Isi nama yang mau muncul, mis. 'Nabe'"/>
+  <button id="setName">Set Nama</button>
+</div>
+
+<!-- Audio -->
+<audio id="audio" src="eyes blue or brown, can't remember.mp3" preload="metadata"></audio>
+
+<script>
+/* ================= STAR FIELD (twinkle + parallax drift) ================ */
+(()=>{
+  const c=document.getElementById('stars'), x=c.getContext('2d');
+  let W,H,stars=[];
+  function resize(){ W=c.width=innerWidth; H=c.height=innerHeight; makeStars(); }
+  function makeStars(){
+    const n=Math.round((W*H)/16000);
+    stars.length=0;
+    for(let i=0;i<n;i++){
+      const depth=Math.random();                 // 0 (dekat) - 1 (jauh)
+      stars.push({
+        x:Math.random()*W,
+        y:Math.random()*H,
+        r:0.6 + depth*1.4,
+        tw:Math.random()*Math.PI*2,
+        sp:0.002+Math.random()*0.002,
+        dy:0.05 + (1-depth)*0.35                // gerak turun halus
+      });
+    }
+  }
+  function loop(){
+    x.clearRect(0,0,W,H);
+    x.fillStyle="#fff";
+    for(const s of stars){
+      s.tw+=s.sp;
+      const a=0.6+Math.sin(s.tw)*0.4;
+      s.y+=s.dy; if(s.y>H+2){ s.y=-2; s.x=Math.random()*W; }
+      x.globalAlpha=a;
+      x.beginPath(); x.arc(s.x,s.y,s.r,0,Math.PI*2); x.fill();
+    }
+    requestAnimationFrame(loop);
+  }
+  addEventListener('resize',resize); resize(); loop();
+})();
+
+/* ================= AUDIO PLAYER ================= */
+const audio = document.getElementById('audio');
+const toggle= document.getElementById('toggle');
+const bar    = document.getElementById('bar');
+const fill   = document.getElementById('fill');
+const cur    = document.getElementById('cur');
+const dur    = document.getElementById('dur');
+
+function fmt(t){ if(!isFinite(t)) return "0:00"; const m=Math.floor(t/60); const s=Math.floor(t%60).toString().padStart(2,'0'); return `${m}:${s}`;}
+audio.addEventListener('loadedmetadata',()=>{ dur.textContent=fmt(audio.duration); });
+audio.addEventListener('timeupdate',()=>{
+  cur.textContent=fmt(audio.currentTime);
+  const p = audio.currentTime / (audio.duration||1);
+  fill.style.width = (p*100)+'%';
+});
+audio.addEventListener('ended', ()=>{ toggle.textContent='►'; });
+
+toggle.addEventListener('click', async ()=>{
+  try{
+    if(audio.paused){ await audio.play(); toggle.textContent='❚❚'; }
+    else{ audio.pause(); toggle.textContent='►'; }
+  }catch(e){ console.warn('Play blocked:', e); }
+});
+bar.addEventListener('click',e=>{
+  const r=bar.getBoundingClientRect();
+  const p=(e.clientX - r.left)/r.width;
+  audio.currentTime = p * (audio.duration||0);
+});
+window.addEventListener('click', function unlockOnce(){
+  audio.play().then(()=>{ audio.pause(); }).catch(()=>{});
+  window.removeEventListener('click', unlockOnce);
+},{once:true});
+
+/* ================= INPUT NAMA ================= */
+const nameField=document.getElementById('nameField');
+const setNameBtn=document.getElementById('setName');
+let NAME_TEXT="Nabe ฉันรักคุณมาก💖";
+setNameBtn.onclick=()=>{ NAME_TEXT = nameField.value.trim() || "ฉันรักคุณมาก💖"; };
+
+/* ================= PHRASES (random) ================= */
+const RAW_PHRASES = [
+  "Nabe ฉันรักคุณมาก ",
+  "I love you so much Baby 💖",
+  "With you, time stops ⏳",
+  "With you everything is magic ✨",
+  "By your side, I'm happy 😊",
+  "Nabe, you’re my favorite in my life 💞",
+  "You are my universe 🌌",
+  "Thanks for existing, Nabe 🌸",
+  "My heart chooses you every time 💞",
+  "Under the same moon 🌙✨"
+];
+const NAME_WEIGHT = 0.5; // 30% peluang nama
+function getPhrase(){
+  const list = RAW_PHRASES.map(p=>p.replaceAll("{name}", NAME_TEXT));
+  if(Math.random()<NAME_WEIGHT) return NAME_TEXT;
+  return list[Math.floor(Math.random()*list.length)];
+}
+
+/* ================= BUBBLE PHYSICS ================= */
+const heart=document.getElementById('heart');
+const GRAV=0.22, AIR=0.995;
+const bubbles=new Set();
+
+function centerPos(){
+  const r=heart.getBoundingClientRect();
+  return {x:r.left+r.width/2, y:r.top+r.height/2};
+}
+function spawnBubble(text){
+  const b=document.createElement('div');
+  b.className='bubble hidden';
+  b.innerHTML=text;
+  document.body.appendChild(b);
+
+  const w=b.offsetWidth, h=b.offsetHeight;
+  const start=centerPos();
+  const angle=(Math.random()*Math.PI/1.2)-Math.PI/2.4;
+  const speed=4+Math.random()*2.5;
+
+  const state={
+    el:b,
+    x:start.x-w/2, y:start.y-h/2,
+    vx:Math.cos(angle)*speed,
+    vy:-Math.abs(Math.sin(angle))*speed-2,
+    r:(Math.random()*20-10),
+    vr:(Math.random()*0.06-0.03),
+    life:0, dead:false
+  };
+  bubbles.add(state);
+  requestAnimationFrame(()=>b.classList.remove('hidden'));
+}
+(function physics(){
+  for(const it of Array.from(bubbles)){
+    if(it.dead) continue;
+    it.vx*=AIR; it.vy=it.vy*AIR+GRAV;
+    it.x+=it.vx; it.y+=it.vy; it.r+=it.vr; it.life++;
+    it.el.style.transform=`translate(${it.x}px, ${it.y}px) rotate(${it.r}deg)`;
+    it.el.style.opacity=(it.life<30? it.life/30 : 1);
+    if(it.y>innerHeight+80 || it.life>800){
+      it.el.style.transition='opacity .8s'; it.el.style.opacity=0; it.dead=true;
+      setTimeout(()=>{ it.el.remove(); bubbles.delete(it); },800);
+    }
+  }
+  requestAnimationFrame(physics);
+})();
+
+/* ================= PARTICLES ================= */
+function particles(x,y){
+  for(let i=0;i<18;i++){
+    const p=document.createElement('div');
+    p.style.position='fixed'; p.style.left=x+'px'; p.style.top=y+'px';
+    p.style.width=p.style.height=(4+Math.random()*4)+'px';
+    p.style.borderRadius='50%';
+    p.style.background='radial-gradient(circle,#ffd1e1,#ff2f6b)';
+    p.style.pointerEvents='none'; p.style.zIndex=3; p.style.opacity=1;
+    document.body.appendChild(p);
+    const a=Math.random()*Math.PI*2, s=2+Math.random()*5;
+    let vx=Math.cos(a)*s, vy=Math.sin(a)*s - 2, life=0;
+    (function step(){
+      vx*=0.98; vy=vy*0.98+0.2; x+=vx; y+=vy; life++;
+      p.style.transform=`translate(${x}px,${y}px)`; p.style.opacity=1-life/40;
+      if(life<40) requestAnimationFrame(step); else p.remove();
+    })();
+  }
+}
+
+/* ================= CLICK ================= */
+heart.addEventListener('click', async ()=>{
+  heart.classList.add('clicked');
+  setTimeout(()=>heart.classList.remove('clicked'),220);
+
+  spawnBubble(getPhrase());               // nama/kalimat random
+  const c=centerPos(); particles(c.x,c.y);
+
+  if(audio.paused){ try{ await audio.play(); toggle.textContent='❚❚'; }catch(e){} }
+});
+</script>
+</body>
+</html>
